@@ -1,0 +1,20 @@
+{
+  "Version": 1,
+  "Hash": "P2bnvCrae+J4YNDqiP3vepVa3ZBQWm/UEd+P4toF1Jc=",
+  "Source": "GPS_Tracker_Demo",
+  "BasePath": "_content/GPS_Tracker_Demo",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [
+    {
+      "Name": "GPS_Tracker_Demo\\wwwroot",
+      "Source": "GPS_Tracker_Demo",
+      "ContentRoot": "C:\\Users\\chris.chua.SE\\OneDrive - Kintetsu World Express\\Documents\\GitHub\\Cursor Project\\GPS_Tracker_Demo\\wwwroot\\",
+      "BasePath": "_content/GPS_Tracker_Demo",
+      "Pattern": "**"
+    }
+  ],
+  "Assets": [],
+  "Endpoints": []
+}

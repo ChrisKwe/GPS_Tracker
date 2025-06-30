@@ -1,0 +1,553 @@
+@{
+    ViewData["Title"] = "Monitor Center";
+}
+
+<div class="header">
+    <h2><i class="fas fa-eye"></i> Monitor Center</h2>
+    <small>Real-time Driver Location Monitoring</small>
+</div>
+
+<div class="controls">
+    <div class="d-flex justify-content-between align-items-center flex-wrap">
+        <button id="refreshData" class="btn btn-primary">
+            <i class="fas fa-refresh"></i> Refresh Data
+        </button>
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+            <label class="form-check-label" for="autoRefresh">
+                Auto Refresh
+            </label>
+        </div>
+    </div>
+    
+    <div id="sessionCount" class="status-info status-active" style="margin-top: 0.5rem;">
+        <i class="fas fa-users"></i> Active Drivers: <span id="activeCount">0</span>
+    </div>
+</div>
+
+<div class="map-container">
+    <div id="monitorMap"></div>
+</div>
+
+<div class="driver-list mt-3 px-3">
+    <h5><i class="fas fa-list"></i> Driver List & Latest 3 GPS Coordinates <span class="badge bg-success">Live Updates Every 15s</span></h5>
+    <div id="driverList"></div>
+</div>
+
+@section Scripts {
+<script>
+class MonitorSystem {
+    constructor() {
+        this.map = null;
+        this.driverMarkers = {};
+        this.driverPaths = {}; // 存储司机轨迹路径
+        this.driverColors = {}; // 存储司机轨迹颜色
+        this.connection = null;
+        this.autoRefreshTimer = null;
+        this.colorPalette = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dda0dd', '#98d8c8', '#f7dc6f'];
+        
+        this.initializeMap();
+        this.initializeSignalR();
+        this.bindEvents();
+        this.startAutoRefresh();
+        this.loadInitialData();
+    }
+    
+    initializeMap() {
+        // Ensure map container is rendered
+        setTimeout(() => {
+            try {
+                console.log('Initializing monitor map...');
+                
+                // Check if map container exists
+                const mapContainer = document.getElementById('monitorMap');
+                if (!mapContainer) {
+                    console.error('Map container not found');
+                    return;
+                }
+                
+                // Initialize monitor map with Singapore as default
+                this.map = L.map('monitorMap').setView([1.3521, 103.8198], 12);
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 19
+                }).addTo(this.map);
+                
+                L.control.scale().addTo(this.map);
+                
+                // Force refresh map size
+                setTimeout(() => {
+                    this.map.invalidateSize();
+                    console.log('Monitor map initialization complete');
+                }, 100);
+                
+            } catch (error) {
+                console.error('Map initialization failed:', error);
+            }
+        }, 100);
+    }
+    
+    async initializeSignalR() {
+        try {
+            this.connection = new signalR.HubConnectionBuilder()
+                .withUrl("/locationHub")
+                .build();
+            
+            await this.connection.start();
+            console.log("Monitor SignalR connection successful");
+            
+            // Listen for location updates
+            this.connection.on("LocationUpdate", (data) => {
+                this.updateDriverLocation(data);
+            });
+            
+        } catch (err) {
+            console.error("SignalR connection failed:", err);
+        }
+    }
+    
+    bindEvents() {
+        document.getElementById('refreshData').addEventListener('click', () => {
+            this.loadDriverData();
+        });
+        
+        document.getElementById('autoRefresh').addEventListener('change', (e) => {
+            if (e.target.checked) {
+                this.startAutoRefresh();
+            } else {
+                this.stopAutoRefresh();
+            }
+        });
+    }
+    
+    async loadInitialData() {
+        await this.loadDriverData();
+    }
+    
+    async loadDriverData() {
+        try {
+            const response = await fetch('/Monitor/GetAllActiveSessions');
+            const sessions = await response.json();
+            
+            this.updateDriverMarkers(sessions);
+            this.updateDriverList(sessions);
+            this.updateActiveCount(sessions.length);
+            
+        } catch (error) {
+            console.error('Failed to load driver data:', error);
+        }
+    }
+    
+    updateDriverMarkers(sessions) {
+        // Check if map is initialized
+        if (!this.map) {
+            console.log('Map not initialized, retrying later...');
+            setTimeout(() => this.updateDriverMarkers(sessions), 500);
+            return;
+        }
+        
+        try {
+            // Clear existing markers and paths
+            Object.values(this.driverMarkers).forEach(marker => {
+                this.map.removeLayer(marker);
+            });
+            Object.values(this.driverPaths).forEach(path => {
+                this.map.removeLayer(path);
+            });
+            this.driverMarkers = {};
+            this.driverPaths = {};
+            
+            console.log('Updating driver markers and tracks, driver count:', sessions.length);
+            
+            let colorIndex = 0;
+            
+            // Add new markers and tracks
+            sessions.forEach(session => {
+                if (session.lastLocation && session.locationHistory) {
+                    
+                    // Assign color to driver
+                    if (!this.driverColors[session.sessionId]) {
+                        this.driverColors[session.sessionId] = this.colorPalette[colorIndex % this.colorPalette.length];
+                        colorIndex++;
+                    }
+                    const driverColor = this.driverColors[session.sessionId];
+                    
+                    // Draw track path
+                    if (session.locationHistory.length > 1) {
+                        const pathCoords = session.locationHistory.map(loc => [loc.latitude, loc.longitude]);
+                        const pathLine = L.polyline(pathCoords, {
+                            color: driverColor,
+                            weight: 4,
+                            opacity: 0.8,
+                            smoothFactor: 1
+                        }).addTo(this.map);
+                        
+                        // Add path info popup
+                        const pathInfo = `
+                            <div>
+                                <strong>${session.driverName} Track</strong><br/>
+                                Total points: ${session.locationHistory.length}<br/>
+                                Start time: ${new Date(session.startTime).toLocaleString()}<br/>
+                                Tracking duration: ${this.calculateDuration(session.startTime)}
+                            </div>
+                        `;
+                        pathLine.bindPopup(pathInfo);
+                        this.driverPaths[session.sessionId] = pathLine;
+                        
+                        console.log(`Drew driver track: ${session.driverName}, ${session.locationHistory.length} points, color: ${driverColor}`);
+                    }
+                    
+                    // Add current location marker
+                    const marker = L.marker([
+                        session.lastLocation.latitude, 
+                        session.lastLocation.longitude
+                    ]).addTo(this.map);
+                    
+                    const popupContent = `
+                        <div>
+                            <strong>${session.driverName}</strong><br/>
+                            Current location: ${session.lastLocation.latitude.toFixed(6)}, ${session.lastLocation.longitude.toFixed(6)}<br/>
+                            Last update: ${new Date(session.lastLocation.timestamp).toLocaleString()}<br/>
+                            Accuracy: ${session.lastLocation.accuracy.toFixed(1)}m<br/>
+                            Track points: ${session.locationHistory.length}<br/>
+                            ${session.lastLocation.speed ? `Speed: ${(session.lastLocation.speed * 3.6).toFixed(1)} km/h<br/>` : ''}
+                        </div>
+                    `;
+                    
+                    marker.bindPopup(popupContent);
+                    this.driverMarkers[session.sessionId] = marker;
+                    
+                    console.log(`Added driver marker: ${session.driverName} at ${session.lastLocation.latitude}, ${session.lastLocation.longitude}`);
+                }
+            });
+            
+            // Adjust map view to show all markers and tracks
+            if (sessions.length > 0) {
+                const allLayers = [...Object.values(this.driverMarkers), ...Object.values(this.driverPaths)];
+                if (allLayers.length > 0) {
+                    const group = new L.featureGroup(allLayers);
+                    this.map.fitBounds(group.getBounds().pad(0.1));
+                    console.log('Map view adjusted to show all drivers and tracks');
+                }
+            }
+            
+        } catch (error) {
+            console.error('Failed to update driver markers:', error);
+        }
+    }
+    
+    calculateDuration(startTime) {
+        const now = new Date();
+        const start = new Date(startTime);
+        const diff = Math.floor((now - start) / 1000 / 60); // minutes
+        
+        if (diff < 60) {
+            return `${diff} minutes`;
+        } else {
+            const hours = Math.floor(diff / 60);
+            const minutes = diff % 60;
+            return `${hours} hours ${minutes} minutes`;
+        }
+    }
+    
+    updateDriverList(sessions) {
+        const listContainer = document.getElementById('driverList');
+        
+        if (sessions.length === 0) {
+            listContainer.innerHTML = '<div class="text-muted">No active drivers</div>';
+            return;
+        }
+        
+        const listHTML = sessions.map(session => {
+            const timeDiff = Math.floor((new Date() - new Date(session.lastLocation.timestamp)) / 60000);
+            const statusClass = timeDiff > 5 ? 'text-warning' : 'text-success';
+            const driverColor = this.driverColors[session.sessionId] || '#007bff';
+            
+            // GPS History section - Latest 3 coordinates
+            const historyHTML = session.locationHistory.length > 0 ? `
+                <div class="mt-2">
+                    <small class="text-muted"><strong>Latest 3 GPS Coordinates (Real-time):</strong></small>
+                    <div class="gps-history latest-coords">
+                        ${session.locationHistory.slice(-3).map((location, index) => {
+                            const pointNumber = session.locationHistory.length - 3 + index + 1;
+                            const isLatest = index === session.locationHistory.slice(-3).length - 1;
+                            return `
+                                <div class="gps-point ${isLatest ? 'latest-point' : ''}">
+                                    <span class="point-number">${pointNumber}.</span>
+                                    <span class="point-coords">${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}</span>
+                                    <span class="point-time">${new Date(location.timestamp).toLocaleTimeString()}</span>
+                                    <span class="point-accuracy">(±${location.accuracy.toFixed(0)}m)</span>
+                                    ${isLatest ? '<span class="live-indicator">🔴 LIVE</span>' : ''}
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            ` : '';
+            
+            return `
+                <div class="card mb-2" style="border-left: 4px solid ${driverColor};">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <strong>${session.driverName}</strong>
+                                <div class="badge ${statusClass === 'text-success' ? 'bg-success' : 'bg-warning'} ms-2">
+                                    ${timeDiff} minutes ago
+                                </div>
+                                <br/>
+                                <small class="text-muted">
+                                    Current: ${session.lastLocation.latitude.toFixed(6)}, ${session.lastLocation.longitude.toFixed(6)}
+                                </small>
+                                <br/>
+                                <small class="text-muted">
+                                    Accuracy: ${session.lastLocation.accuracy.toFixed(1)}m
+                                    ${session.lastLocation.speed ? ` | Speed: ${(session.lastLocation.speed * 3.6).toFixed(1)} km/h` : ''}
+                                </small>
+                            </div>
+                            <div class="text-end">
+                                <div class="small">
+                                    <strong>Track Statistics</strong><br/>
+                                    <span class="text-primary">📍 ${session.locationHistory ? session.locationHistory.length : 0} points</span><br/>
+                                    <span class="text-info">⏱️ ${this.calculateDuration(session.startTime)}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                <i class="fas fa-clock"></i> Started: ${new Date(session.startTime).toLocaleString()}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        listContainer.innerHTML = listHTML;
+    }
+    
+    updateActiveCount(count) {
+        document.getElementById('activeCount').textContent = count;
+    }
+    
+    updateDriverLocation(data) {
+        console.log('Received real-time location update:', data);
+        
+        // Update driver location marker in real-time
+        if (this.driverMarkers[data.sessionId]) {
+            const marker = this.driverMarkers[data.sessionId];
+            marker.setLatLng([data.latitude, data.longitude]);
+            
+            const popupContent = `
+                <div>
+                    <strong>${data.driverName || 'Driver'}</strong><br/>
+                    Real-time location: ${data.latitude.toFixed(6)}, ${data.longitude.toFixed(6)}<br/>
+                    Update time: ${new Date(data.timestamp).toLocaleString()}<br/>
+                    Accuracy: ${data.accuracy ? data.accuracy.toFixed(1) : 'N/A'}m<br/>
+                    Speed: ${data.speed ? (data.speed * 3.6).toFixed(1) : 'N/A'} km/h
+                </div>
+            `;
+            
+            marker.setPopupContent(popupContent);
+            console.log(`Updated driver marker position: ${data.driverName} to ${data.latitude}, ${data.longitude}`);
+        }
+        
+        // Immediately reload driver data to show latest 3 coordinates
+        setTimeout(() => {
+            this.loadDriverData();
+            // Add flash effect to indicate real-time update
+            this.flashLatestCoordinates();
+        }, 500); // Faster reload for real-time coordinates
+    }
+    
+    startAutoRefresh() {
+        this.stopAutoRefresh();
+        
+        // Refresh data every 15 seconds to show latest coordinates faster
+        this.autoRefreshTimer = setInterval(() => {
+            this.loadDriverData();
+        }, 15000);
+    }
+    
+    stopAutoRefresh() {
+        if (this.autoRefreshTimer) {
+            clearInterval(this.autoRefreshTimer);
+            this.autoRefreshTimer = null;
+        }
+    }
+    
+    flashLatestCoordinates() {
+        // Add flash effect to latest coordinates to show real-time update
+        const latestPoints = document.querySelectorAll('.latest-point');
+        latestPoints.forEach(point => {
+            point.style.transform = 'scale(1.05)';
+            point.style.transition = 'transform 0.3s ease';
+            setTimeout(() => {
+                point.style.transform = 'scale(1)';
+            }, 300);
+        });
+        
+        // Flash the driver list section title
+        const driverListTitle = document.querySelector('.driver-list h5');
+        if (driverListTitle) {
+            driverListTitle.style.color = '#28a745';
+            setTimeout(() => {
+                driverListTitle.style.color = '';
+            }, 1000);
+        }
+    }
+}
+
+// Initialize monitor system after page load
+document.addEventListener('DOMContentLoaded', function() {
+    window.monitorSystem = new MonitorSystem();
+});
+</script>
+}
+
+<style>
+.map-container {
+    height: 500px;
+    min-height: 400px;
+    position: relative;
+    margin-bottom: 1rem;
+}
+
+#monitorMap {
+    height: 100%;
+    width: 100%;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.driver-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.card {
+    border: 1px solid #e9ecef;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.form-check-input:checked {
+    background-color: #198754;
+    border-color: #198754;
+}
+
+@@media (max-width: 768px) {
+    .map-container {
+        height: 400px;
+    }
+}
+
+.gps-history {
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    padding: 8px;
+    margin-top: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    border: 1px solid #dee2e6;
+}
+
+.latest-coords {
+    background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+    border: 2px solid #2196f3;
+    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.2);
+}
+
+.gps-point {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 6px;
+    border-bottom: 1px solid #e9ecef;
+    border-radius: 3px;
+    margin-bottom: 2px;
+    transition: all 0.3s ease;
+}
+
+.gps-point:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.gps-point:hover {
+    background-color: rgba(33, 150, 243, 0.1);
+    transform: translateX(2px);
+}
+
+.latest-point {
+    background: linear-gradient(135deg, #4caf50 0%, #8bc34a 100%);
+    color: white;
+    font-weight: bold;
+    border: 2px solid #4caf50;
+    animation: pulse 2s infinite;
+    box-shadow: 0 2px 10px rgba(76, 175, 80, 0.3);
+}
+
+.latest-point .point-coords {
+    color: #ffffff;
+    font-weight: bold;
+}
+
+.latest-point .point-time {
+    color: #e8f5e8;
+}
+
+.latest-point .point-accuracy {
+    color: #ffeb3b;
+}
+
+@@keyframes pulse {
+    0% { box-shadow: 0 2px 10px rgba(76, 175, 80, 0.3); }
+    50% { box-shadow: 0 4px 20px rgba(76, 175, 80, 0.6); }
+    100% { box-shadow: 0 2px 10px rgba(76, 175, 80, 0.3); }
+}
+
+.point-number {
+    color: #6c757d;
+    font-weight: bold;
+    min-width: 25px;
+}
+
+.latest-point .point-number {
+    color: #ffffff;
+}
+
+.point-coords {
+    color: #007bff;
+    font-weight: 500;
+    flex-grow: 1;
+    margin: 0 8px;
+    font-family: 'Courier New', monospace;
+}
+
+.point-time {
+    color: #28a745;
+    font-size: 10px;
+    min-width: 70px;
+    text-align: center;
+}
+
+.point-accuracy {
+    color: #dc3545;
+    font-size: 10px;
+    min-width: 50px;
+    text-align: right;
+}
+
+.live-indicator {
+    color: #ff1744;
+    font-size: 9px;
+    font-weight: bold;
+    margin-left: 5px;
+    animation: blink 1s infinite;
+}
+
+@@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.3; }
+}
+</style> 

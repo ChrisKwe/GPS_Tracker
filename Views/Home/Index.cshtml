@@ -1,0 +1,144 @@
+@{
+    ViewData["Title"] = "Home";
+}
+
+<div class="header">
+    <h2><i class="fas fa-location-arrow"></i> GPS Tracking System</h2>
+    <small>Real-time Location Tracking Solution</small>
+</div>
+
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-lg border-0">
+                <div class="card-body p-5">
+                    <div class="text-center mb-4">
+                        <h3>Welcome to GPS Tracking System</h3>
+                        <p class="text-muted">Please select your role</p>
+                    </div>
+                    
+                    <div class="row g-4">
+                        <div class="col-md-6">
+                            <div class="role-card driver-card">
+                                <div class="card h-100 border-primary">
+                                    <div class="card-body text-center p-4">
+                                        <div class="role-icon mb-3">
+                                            <i class="fas fa-truck fa-3x text-primary"></i>
+                                        </div>
+                                        <h4 class="card-title">Driver Interface</h4>
+                                        <p class="card-text text-muted">
+                                            Start GPS tracking and real-time location reporting
+                                        </p>
+                                        <ul class="list-unstyled text-start mt-3">
+                                            <li><i class="fas fa-check text-success"></i> Start/Stop tracking</li>
+                                            <li><i class="fas fa-check text-success"></i> Real-time location updates</li>
+                                            <li><i class="fas fa-check text-success"></i> Track recording</li>
+                                            <li><i class="fas fa-check text-success"></i> Mobile optimized</li>
+                                        </ul>
+                                        <a href="/Driver" class="btn btn-primary btn-lg w-100 mt-3">
+                                            <i class="fas fa-play"></i> Enter Driver Interface
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="role-card monitor-card">
+                                <div class="card h-100 border-success">
+                                    <div class="card-body text-center p-4">
+                                        <div class="role-icon mb-3">
+                                            <i class="fas fa-monitor-waveform fa-3x text-success"></i>
+                                        </div>
+                                        <h4 class="card-title">Monitor Center</h4>
+                                        <p class="card-text text-muted">
+                                            Real-time monitoring of all driver locations
+                                        </p>
+                                        <ul class="list-unstyled text-start mt-3">
+                                            <li><i class="fas fa-check text-success"></i> Real-time location monitoring</li>
+                                            <li><i class="fas fa-check text-success"></i> Driver status overview</li>
+                                            <li><i class="fas fa-check text-success"></i> GPS history tracking</li>
+                                            <li><i class="fas fa-check text-success"></i> Auto-refresh every 30s</li>
+                                        </ul>
+                                        <a href="/Monitor" class="btn btn-success btn-lg w-100 mt-3">
+                                            <i class="fas fa-eye"></i> Enter Monitor Center
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mt-5">
+                <div class="col-12">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h5><i class="fas fa-info-circle"></i> System Features</h5>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <ul class="list-unstyled">
+                                        <li><i class="fas fa-mobile-alt text-primary"></i> Mobile-friendly interface</li>
+                                        <li><i class="fas fa-map text-primary"></i> Free open-source map solution</li>
+                                        <li><i class="fas fa-clock text-primary"></i> Updates every 10 seconds</li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <ul class="list-unstyled">
+                                        <li><i class="fas fa-satellite-dish text-primary"></i> High-precision GPS positioning</li>
+                                        <li><i class="fas fa-route text-primary"></i> Real-time track recording</li>
+                                        <li><i class="fas fa-broadcast-tower text-primary"></i> SignalR real-time communication</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="text-center mt-4">
+                <small class="text-muted">
+                    <i class="fas fa-shield-alt"></i> 
+                    This system requires HTTPS environment and location permissions to work properly
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.role-card {
+    transition: transform 0.3s ease;
+}
+
+.role-card:hover {
+    transform: translateY(-5px);
+}
+
+.role-icon {
+    transition: transform 0.3s ease;
+}
+
+.role-card:hover .role-icon {
+    transform: scale(1.1);
+}
+
+.card {
+    border-radius: 15px;
+}
+
+.btn {
+    border-radius: 10px;
+    font-weight: bold;
+}
+
+.list-unstyled li {
+    margin-bottom: 0.5rem;
+}
+
+.list-unstyled i {
+    width: 20px;
+    margin-right: 8px;
+}
+</style> 
